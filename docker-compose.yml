@@ -1,0 +1,114 @@
+version: "3.9"
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  minio_data:
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: vispipe
+      POSTGRES_PASSWORD: vispipe
+      POSTGRES_DB: vispipe
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vispipe"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ingestor:
+    build: ./services/ingestor
+    env_file: .env
+    environment:
+      # Override host-based values from .env for container networking
+      MINIO_ENDPOINT: minio:9000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: on-failure
+
+  preprocessor:
+    build: ./services/preprocessor
+    env_file: .env
+    environment:
+      # Override host-based values from .env for container networking
+      MINIO_ENDPOINT: minio:9000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: on-failure
+
+  metadata_extractor:
+    build: ./services/metadata_extractor
+    env_file: .env
+    environment:
+      # Override host-based values from .env for container networking
+      MINIO_ENDPOINT: minio:9000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      DATABASE_URL: postgresql://vispipe:vispipe@postgres:5432/vispipe
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: on-failure
+
+  dlq_inspector:
+    build: ./services/dlq_inspector
+    env_file: .env
+    environment:
+      # Override host-based values from .env for container networking
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+networks:
+  default:
+    name: vispipe-network

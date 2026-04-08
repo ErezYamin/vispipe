@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+*.log
+.coverage
+htmlcov/
+.DS_Store
+.idea/
+docs/
+demo_comparison.png
+conv_summary
+CRASH_COURSE.md
