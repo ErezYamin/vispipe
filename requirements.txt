@@ -1,7 +1,7 @@
-opencv-python==4.9.0.80
-numpy==1.26.4
-psycopg2-binary==2.9.9
-minio==7.2.7
-rich==13.7.1
-matplotlib==3.8.4
-pika==1.3.2
+opencv-python
+numpy
+psycopg2-binary
+minio
+rich
+matplotlib
+pika
